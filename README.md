@@ -1,14 +1,17 @@
 <p align="center">
   <a href="https://github.com/gabrielldn/gh-summary/stargazers">
-    <img src="https://img.shields.io/github/stars/gabrielldn/gh-summary?style=for-the-badge" alt="GitHub stars">
+    <img src="https://img.shields.io/github/stars/gabrielldn/gh-summary" alt="GitHub stars">
   </a>
   <a href="https://github.com/gabrielldn/gh-summary/network/members">
-    <img src="https://img.shields.io/github/forks/gabrielldn/gh-summary?style=for-the-badge" alt="GitHub forks">
+    <img src="https://img.shields.io/github/forks/gabrielldn/gh-summary" alt="GitHub forks">
   </a>
   <a href="https://github.com/gabrielldn/gh-summary/issues">
-    <img src="https://img.shields.io/github/issues/gabrielldn/gh-summary?style=for-the-badge" alt="GitHub issues">
+    <img src="https://img.shields.io/github/issues/gabrielldn/gh-summary" alt="GitHub issues">
   </a>
-  <img src="https://img.shields.io/github/license/gabrielldn/gh-summary?style=for-the-badge" alt="MIT license">
+  <a href="https://github.com/gabrielldn/gh-summary/issues-pr">
+    <img src="https://img.shields.io/github/issues-pr/gabrielldn/gh-summary" alt="GitHub PR">
+  </a>
+  <img src="https://img.shields.io/github/license/gabrielldn/gh-summary" alt="MIT license">
 </p>
 
 <h1 align="center">gh-summary</h1>
