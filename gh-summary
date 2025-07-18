@@ -7,23 +7,23 @@ while (( $# )); do
   case $1 in
     --author)       AUTHOR=$2; shift 2;;
     --author-date)  AUTHOR_DATE=$2; shift 2;;
-    -h|--help) echo "Uso: gh summary [--author USER] [--author-date AAAA-MM-DD]"; exit 0;;
-    *) echo "Flag desconhecida: $1"; exit 1;;
+    -h|--help) echo "Usage: gh summary [--author USER] [--author-date YYYY-MM-DD]"; exit 0;;
+    *) echo "Unknown flag: $1"; exit 1;;
   esac
 done
 [[ -z $AUTHOR      ]] && AUTHOR=$(gh api user --jq .login)
 [[ -z $AUTHOR_DATE ]] && AUTHOR_DATE=$(date +%F)
 
 mapfile -t COMMITS < <(gh search commits --author "$AUTHOR" --author-date "$AUTHOR_DATE" \
-  --limit 100 --json repository,sha --jq '.[]|" \(.repository.fullName) \(.sha)"')
-(( ${#COMMITS[@]}==0 )) && { printf '❌ Nenhum commit encontrado para %s (autor: %s)\n' "$AUTHOR_DATE" "$AUTHOR"; exit 1; }
+  --limit 100 --json repository,sha --jq '.[] | "\(.repository.fullName) \(.sha)"')
+(( ${#COMMITS[@]} == 0 )) && { printf '❌ No commits found for %s (author: %s)\n' "$AUTHOR_DATE" "$AUTHOR"; exit 1; }
 
 STATS=$(
   printf '%s\n' "${COMMITS[@]}" |
   xargs -n2 -P"$(nproc)" bash -c '
     resp=$(gh api "repos/$1/commits/$2") || exit 0
-    a=$(jq .stats.additions  <<<"$resp")
-    d=$(jq .stats.deletions  <<<"$resp")
+    a=$(jq .stats.additions <<<"$resp")
+    d=$(jq .stats.deletions <<<"$resp")
     c=$(jq -r .files[].patch <<<"$resp" | grep -E "^[+-][^+-]" | sed "s/^[+-]//" | wc -m)
     echo "$a $d $c"
   ' _
@@ -43,25 +43,29 @@ query($login:String!){
   .contributionDays[] | select(.date==$d) | .contributionCount') || CONTRIB_N=0
 [[ -z $CONTRIB_N ]] && CONTRIB_N=0
 
-labels=( "Commits" "Linhas totais" "Caracteres" "Contribuições" )
+labels=( "Commits" "Total lines" "Characters" "Contributions" )
 values=( "$COMMIT_N" "$LINES_N" "$CHARS_N" "$CONTRIB_N" )
 
-labw=0 valw=0
+labw=0; valw=0
 for i in "${!labels[@]}"; do
   (( ${#labels[i]} > labw )) && labw=${#labels[i]}
   (( ${#values[i]} > valw  )) && valw=${#values[i]}
 done
 
-inner=$(( labw + valw + 3 ))      # espaço antes do valor + 1
+title="Summary for $AUTHOR_DATE"
+inner=$(( labw + valw + 3 ))
+(( ${#title} > inner )) && inner=${#title}
+valw=$(( inner - labw - 3 ))  # -3 = espaço, valor e borda
+
 border=$(printf '═%.0s' $(seq 1 $inner))
 
-center() {                        # $1‑texto, usa $inner
+center() {                        # $1 = text, uses $inner
   local padL=$(( (inner-${#1})/2 ))
   printf "%*s%s%*s" "$padL" '' "$1" $(( inner-padL-${#1} )) ''
 }
 
 printf "\n╔%s╗\n" "$border"
-printf "║%s║\n" "$(center "Resumo de $AUTHOR_DATE")"
+printf "║%s║\n" "$(center "Summary for $AUTHOR_DATE")"
 printf "╠%s╣\n" "${border//═/─}"
 for i in "${!labels[@]}"; do
   printf "║ %-${labw}s %${valw}s ║\n" "${labels[i]}" "${values[i]}"
