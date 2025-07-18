@@ -1,73 +1,69 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 IFS=$'\n\t'
-AUTHOR=""
-AUTHOR_DATE=""
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --author)
-        AUTHOR="$2"; shift 2 ;;
-    --author-date)
-        AUTHOR_DATE="$2"; shift 2 ;;
-    -h|--help)
-        echo "Uso: gh summary [--author USER] [--author-date AAAA-MM-DD]"; exit 0 ;;
-    *)
-        echo "Flag desconhecida: $1" >&2; exit 1 ;;
+AUTHOR='' AUTHOR_DATE=''
+while (( $# )); do
+  case $1 in
+    --author)       AUTHOR=$2; shift 2;;
+    --author-date)  AUTHOR_DATE=$2; shift 2;;
+    -h|--help) echo "Uso: gh summary [--author USER] [--author-date AAAA-MM-DD]"; exit 0;;
+    *) echo "Flag desconhecida: $1"; exit 1;;
   esac
 done
+[[ -z $AUTHOR      ]] && AUTHOR=$(gh api user --jq .login)
+[[ -z $AUTHOR_DATE ]] && AUTHOR_DATE=$(date +%F)
 
-[[ -z "$AUTHOR"      ]] && AUTHOR=$(gh api user --jq .login)
-[[ -z "$AUTHOR_DATE" ]] && AUTHOR_DATE=$(date +%F)
-
-mapfile -t COMMITS < <(
-  gh search commits           \
-     --author        "$AUTHOR" \
-     --author-date   "$AUTHOR_DATE" \
-     --limit 100              \
-     --json repository,sha    \
-     --jq '.[]|"\(.repository.fullName) \(.sha)"'
-)
-
-if (( ${#COMMITS[@]} == 0 )); then
-  printf '❌ Nenhum commit encontrado para %s (autor: %s)\n' "$AUTHOR_DATE" "$AUTHOR" >&2
-  exit 1
-fi
+mapfile -t COMMITS < <(gh search commits --author "$AUTHOR" --author-date "$AUTHOR_DATE" \
+  --limit 100 --json repository,sha --jq '.[]|" \(.repository.fullName) \(.sha)"')
+(( ${#COMMITS[@]}==0 )) && { printf '❌ Nenhum commit encontrado para %s (autor: %s)\n' "$AUTHOR_DATE" "$AUTHOR"; exit 1; }
 
 STATS=$(
   printf '%s\n' "${COMMITS[@]}" |
   xargs -n2 -P"$(nproc)" bash -c '
-     repo=$1 sha=$2
-     resp=$(gh api "repos/$repo/commits/$sha") || exit 0
-     add=$(jq .stats.additions  <<<"$resp")
-     del=$(jq .stats.deletions  <<<"$resp")
-     chars=$(jq -r .files[].patch <<<"$resp" |
-            grep -E "^[+-][^+-]" |
-            sed "s/^[+-]//" | wc -m)
-     echo $((add+del)) $chars
+    resp=$(gh api "repos/$1/commits/$2") || exit 0
+    a=$(jq .stats.additions  <<<"$resp")
+    d=$(jq .stats.deletions  <<<"$resp")
+    c=$(jq -r .files[].patch <<<"$resp" | grep -E "^[+-][^+-]" | sed "s/^[+-]//" | wc -m)
+    echo "$a $d $c"
   ' _
 )
+IFS=' ' read COMMIT_N LINES_N CHARS_N < <(awk '{c++; l+=$1+$2; m+=$3} END{print c,l,m}' <<<"$STATS")
 
-IFS=' ' read -r COMMIT_N LINES_N CHARS_N <<< \
-  "$(awk '{c++; l+=$1; m+=$2} END{print c,l,m}' <<<"$STATS")"
+CONTRIB_N=$(gh api graphql -f query='
+query($login:String!){
+  user(login:$login){
+    contributionsCollection{
+      contributionCalendar{ weeks{ contributionDays{ date contributionCount } } }
+    }
+  }
+}' -f login="$AUTHOR" |
+ jq -r --arg d "$AUTHOR_DATE" '
+  .data.user.contributionsCollection.contributionCalendar.weeks[]
+  .contributionDays[] | select(.date==$d) | .contributionCount') || CONTRIB_N=0
+[[ -z $CONTRIB_N ]] && CONTRIB_N=0
 
-rows=(
-  "Commits       $COMMIT_N"
-  "Linhas totais $LINES_N"
-  "Caracteres    $CHARS_N"
-)
-max=0; for r in "${rows[@]}"; do (( ${#r}>max ))&&max=${#r}; done
-W=$((max+4)); border=$(printf '═%.0s' $(seq 1 $W))
+labels=( "Commits" "Linhas totais" "Caracteres" "Contribuições" )
+values=( "$COMMIT_N" "$LINES_N" "$CHARS_N" "$CONTRIB_N" )
 
-echo
-printf "╔%s╗\n" "$border"
-title=" Resumo de $AUTHOR_DATE "
-pl=$(( (W-${#title})/2 )); pr=$(( W-pl-${#title} ))
-printf "║%*s%s%*s║\n" $pl '' "$title" $pr ''
+labw=0 valw=0
+for i in "${!labels[@]}"; do
+  (( ${#labels[i]} > labw )) && labw=${#labels[i]}
+  (( ${#values[i]} > valw  )) && valw=${#values[i]}
+done
+
+inner=$(( labw + valw + 3 ))      # espaço antes do valor + 1
+border=$(printf '═%.0s' $(seq 1 $inner))
+
+center() {                        # $1‑texto, usa $inner
+  local padL=$(( (inner-${#1})/2 ))
+  printf "%*s%s%*s" "$padL" '' "$1" $(( inner-padL-${#1} )) ''
+}
+
+printf "\n╔%s╗\n" "$border"
+printf "║%s║\n" "$(center "Resumo de $AUTHOR_DATE")"
 printf "╠%s╣\n" "${border//═/─}"
-for r in "${rows[@]}"; do
-  pl=$(( (W-${#r})/2 )); pr=$(( W-pl-${#r} ))
-  printf "║%*s%s%*s║\n" $pl '' "$r" $pr ''
+for i in "${!labels[@]}"; do
+  printf "║ %-${labw}s %${valw}s ║\n" "${labels[i]}" "${values[i]}"
 done
 printf "╚%s╝\n" "$border"
